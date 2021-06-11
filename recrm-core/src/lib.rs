@@ -14,11 +14,12 @@ pub fn recursively_remove(path: PathBuf) {
     loop {
         let timeout = Duration::from_millis(500);
         let res = worker_pool
-            .job_progress
+            .job_progress_store
             .event_receiver
             .recv_timeout(timeout);
 
-        worker_pool.job_progress.print_progress();
+        let progress = worker_pool.get_progress();
+        println!("{:?}", progress);
 
         match res {
             Ok(JobProgressEvent::DeleteComplete) => {

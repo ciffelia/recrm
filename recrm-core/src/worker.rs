@@ -1,6 +1,6 @@
 use crate::file::File;
-use crate::job::{JobPool, JobType};
-use crate::job::{JobProgress, JobProgressEvent};
+use crate::job::{JobPool, JobProgress, JobType};
+use crate::job::{JobProgressEvent, JobProgressStore};
 use crossbeam::{channel, select};
 use log::{debug, info, trace};
 use parking_lot::Mutex;
@@ -12,7 +12,7 @@ pub struct Worker {
     id: usize,
     preferred_job_type: JobType,
     job_pool: JobPool,
-    job_progress: JobProgress,
+    job_progress_store: JobProgressStore,
     command_receiver: channel::Receiver<WorkerCommand>,
 }
 
@@ -79,10 +79,10 @@ impl Worker {
             for child in children {
                 if child.is_dir {
                     self.queue_scan(Arc::new(Mutex::new(child)));
-                    self.job_progress.report_dir_found();
+                    self.job_progress_store.report_dir_found();
                 } else {
                     self.queue_delete(Arc::new(Mutex::new(child)));
-                    self.job_progress.report_file_found();
+                    self.job_progress_store.report_file_found();
                 }
             }
         }
@@ -102,9 +102,9 @@ impl Worker {
             file.delete()?;
 
             if file.is_dir {
-                self.job_progress.report_dir_deleted();
+                self.job_progress_store.report_dir_deleted();
             } else {
-                self.job_progress.report_file_deleted();
+                self.job_progress_store.report_file_deleted();
             }
 
             match &file.parent {
@@ -114,7 +114,7 @@ impl Worker {
                     }
                 }
                 None => {
-                    self.job_progress
+                    self.job_progress_store
                         .event_sender
                         .send(JobProgressEvent::DeleteComplete)
                         .unwrap();
@@ -151,7 +151,7 @@ pub enum WorkerCommand {
 
 pub struct WorkerPool {
     job_pool: JobPool,
-    pub job_progress: JobProgress,
+    pub job_progress_store: JobProgressStore,
     command_senders: Vec<channel::Sender<WorkerCommand>>,
 }
 
@@ -159,7 +159,7 @@ impl WorkerPool {
     pub fn new(size: usize) -> WorkerPool {
         let mut worker_pool = WorkerPool {
             job_pool: JobPool::new(),
-            job_progress: JobProgress::new(),
+            job_progress_store: JobProgressStore::new(),
             command_senders: vec![],
         };
 
@@ -178,7 +178,7 @@ impl WorkerPool {
 
     pub fn start_worker(&mut self, id: usize, preferred_job_type: JobType) {
         let job_pool = self.job_pool.clone();
-        let job_progress = self.job_progress.clone();
+        let job_progress_store = self.job_progress_store.clone();
 
         let (command_sender, command_receiver) = channel::unbounded();
         self.command_senders.push(command_sender);
@@ -187,7 +187,7 @@ impl WorkerPool {
             id,
             preferred_job_type,
             job_pool,
-            job_progress,
+            job_progress_store,
             command_receiver,
         };
 
@@ -215,10 +215,14 @@ impl WorkerPool {
 
         if is_dir {
             self.job_pool.scan_sender.send(msg).unwrap();
-            self.job_progress.report_dir_found();
+            self.job_progress_store.report_dir_found();
         } else {
             self.job_pool.delete_sender.send(msg).unwrap();
-            self.job_progress.report_file_found()
+            self.job_progress_store.report_file_found()
         }
+    }
+
+    pub fn get_progress(&self) -> JobProgress {
+        self.job_progress_store.get_progress()
     }
 }

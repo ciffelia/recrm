@@ -32,8 +32,16 @@ impl JobPool {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct JobProgress {
+    found_dirs: usize,
+    found_files: usize,
+    deleted_dirs: usize,
+    deleted_files: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct JobProgressStore {
     found_dirs: Arc<AtomicUsize>,
     found_files: Arc<AtomicUsize>,
     deleted_dirs: Arc<AtomicUsize>,
@@ -42,11 +50,11 @@ pub struct JobProgress {
     pub event_receiver: channel::Receiver<JobProgressEvent>,
 }
 
-impl JobProgress {
+impl JobProgressStore {
     pub fn new() -> Self {
         let (sender, receiver) = channel::unbounded();
 
-        JobProgress {
+        JobProgressStore {
             found_dirs: Arc::new(AtomicUsize::new(0)),
             found_files: Arc::new(AtomicUsize::new(0)),
             deleted_dirs: Arc::new(AtomicUsize::new(0)),
@@ -72,18 +80,13 @@ impl JobProgress {
         self.deleted_files.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn print_progress(&self) {
-        let found_dirs = self.found_dirs.load(Ordering::Relaxed);
-        let found_files = self.found_files.load(Ordering::Relaxed);
-        let deleted_dirs = self.deleted_dirs.load(Ordering::Relaxed);
-        let deleted_files = self.deleted_files.load(Ordering::Relaxed);
-
-        println!("  {:<7}  {:>10}  {:>10}", "", "Folders", "Files");
-        println!("  {:<7}  {:>10}  {:>10}", "Found", found_dirs, found_files);
-        println!(
-            "  {:<7}  {:>10}  {:>10}",
-            "Deleted", deleted_dirs, deleted_files
-        );
+    pub fn get_progress(&self) -> JobProgress {
+        JobProgress {
+            found_dirs: self.found_dirs.load(Ordering::Relaxed),
+            found_files: self.found_files.load(Ordering::Relaxed),
+            deleted_dirs: self.deleted_dirs.load(Ordering::Relaxed),
+            deleted_files: self.deleted_files.load(Ordering::Relaxed),
+        }
     }
 }
 
