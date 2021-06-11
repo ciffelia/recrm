@@ -150,7 +150,7 @@ pub enum WorkerCommand {
 }
 
 pub struct WorkerPool {
-    pub job_pool: JobPool,
+    job_pool: JobPool,
     pub job_progress: JobProgress,
     command_senders: Vec<channel::Sender<WorkerCommand>>,
 }
