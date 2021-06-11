@@ -1,6 +1,7 @@
 use crate::file::File;
 use crossbeam::channel;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -33,10 +34,10 @@ impl JobPool {
 
 #[derive(Debug, Clone)]
 pub struct JobProgress {
-    found_dirs: Arc<Mutex<usize>>,
-    found_files: Arc<Mutex<usize>>,
-    deleted_dirs: Arc<Mutex<usize>>,
-    deleted_files: Arc<Mutex<usize>>,
+    found_dirs: Arc<AtomicUsize>,
+    found_files: Arc<AtomicUsize>,
+    deleted_dirs: Arc<AtomicUsize>,
+    deleted_files: Arc<AtomicUsize>,
     pub event_sender: channel::Sender<JobProgressEvent>,
     pub event_receiver: channel::Receiver<JobProgressEvent>,
 }
@@ -46,40 +47,36 @@ impl JobProgress {
         let (sender, receiver) = channel::unbounded();
 
         JobProgress {
-            found_dirs: Arc::new(Mutex::new(0usize)),
-            found_files: Arc::new(Mutex::new(0usize)),
-            deleted_dirs: Arc::new(Mutex::new(0usize)),
-            deleted_files: Arc::new(Mutex::new(0usize)),
+            found_dirs: Arc::new(AtomicUsize::new(0)),
+            found_files: Arc::new(AtomicUsize::new(0)),
+            deleted_dirs: Arc::new(AtomicUsize::new(0)),
+            deleted_files: Arc::new(AtomicUsize::new(0)),
             event_sender: sender,
             event_receiver: receiver,
         }
     }
 
     pub fn report_dir_found(&self) {
-        let mut found_dirs = self.found_dirs.lock();
-        *found_dirs += 1;
+        self.found_dirs.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn report_file_found(&self) {
-        let mut found_files = self.found_files.lock();
-        *found_files += 1;
+        self.found_files.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn report_dir_deleted(&self) {
-        let mut deleted_dirs = self.deleted_dirs.lock();
-        *deleted_dirs += 1;
+        self.deleted_dirs.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn report_file_deleted(&self) {
-        let mut deleted_files = self.deleted_files.lock();
-        *deleted_files += 1;
+        self.deleted_files.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn print_progress(&self) {
-        let found_dirs = *self.found_dirs.lock();
-        let found_files = *self.found_files.lock();
-        let deleted_dirs = *self.deleted_dirs.lock();
-        let deleted_files = *self.deleted_files.lock();
+        let found_dirs = self.found_dirs.load(Ordering::Relaxed);
+        let found_files = self.found_files.load(Ordering::Relaxed);
+        let deleted_dirs = self.deleted_dirs.load(Ordering::Relaxed);
+        let deleted_files = self.deleted_files.load(Ordering::Relaxed);
 
         println!("  {:<7}  {:>10}  {:>10}", "", "Folders", "Files");
         println!("  {:<7}  {:>10}  {:>10}", "Found", found_dirs, found_files);
