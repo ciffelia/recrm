@@ -66,7 +66,11 @@ impl Worker {
     }
 
     fn scan(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
-        trace!("[{:02}] receive_scan: {}", self.id, file.lock().path.display());
+        trace!(
+            "[{:02}] receive_scan: {}",
+            self.id,
+            file.lock().path.display()
+        );
 
         let children = File::scan_children(&file)?;
         if children.len() == 0 {
@@ -87,7 +91,11 @@ impl Worker {
     }
 
     fn delete(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
-        trace!("[{:02}] receive_delete: {}", self.id, file.lock().path.display());
+        trace!(
+            "[{:02}] receive_delete: {}",
+            self.id,
+            file.lock().path.display()
+        );
 
         {
             let file = file.lock();
@@ -118,12 +126,20 @@ impl Worker {
     }
 
     fn queue_scan(&self, file: Arc<Mutex<File>>) {
-        trace!("[{:02}] queue_scan: {}", self.id, file.lock().path.display());
+        trace!(
+            "[{:02}] queue_scan: {}",
+            self.id,
+            file.lock().path.display()
+        );
         self.job_pool.scan_sender.send(file).unwrap();
     }
 
     fn queue_delete(&self, file: Arc<Mutex<File>>) {
-        trace!("[{:02}] queue_delete: {}", self.id, file.lock().path.display());
+        trace!(
+            "[{:02}] queue_delete: {}",
+            self.id,
+            file.lock().path.display()
+        );
         self.job_pool.delete_sender.send(file).unwrap();
     }
 }
