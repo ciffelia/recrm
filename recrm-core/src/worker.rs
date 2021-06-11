@@ -18,7 +18,7 @@ pub struct Worker {
 
 impl Worker {
     pub fn work_loop(&self) -> io::Result<()> {
-        debug!("Worker {} started", self.id);
+        debug!("[{:02}] started", self.id);
 
         loop {
             match self.command_receiver.try_recv() {
@@ -60,13 +60,13 @@ impl Worker {
             }
         }
 
-        debug!("Worker {} exited", self.id);
+        debug!("[{:02}] exiting", self.id);
 
         Ok(())
     }
 
     fn scan(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
-        trace!("[{:02}][receive_scan] {:?}", self.id, file.lock().path);
+        trace!("[{:02}] receive_scan: {}", self.id, file.lock().path.display());
 
         let children = File::scan_children(&file)?;
         if children.len() == 0 {
@@ -87,7 +87,7 @@ impl Worker {
     }
 
     fn delete(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
-        trace!("[{:02}][receive_delete] {:?}", self.id, file.lock().path);
+        trace!("[{:02}] receive_delete: {}", self.id, file.lock().path.display());
 
         {
             let file = file.lock();
@@ -118,12 +118,12 @@ impl Worker {
     }
 
     fn queue_scan(&self, file: Arc<Mutex<File>>) {
-        trace!("[{:02}][queue_scan] {:?}", self.id, file.lock().path);
+        trace!("[{:02}] queue_scan: {}", self.id, file.lock().path.display());
         self.job_pool.scan_sender.send(file).unwrap();
     }
 
     fn queue_delete(&self, file: Arc<Mutex<File>>) {
-        trace!("[{:02}][queue_delete] {:?}", self.id, file.lock().path);
+        trace!("[{:02}] queue_delete: {}", self.id, file.lock().path.display());
         self.job_pool.delete_sender.send(file).unwrap();
     }
 }
@@ -181,7 +181,7 @@ impl WorkerPool {
     }
 
     pub fn terminate_workers(&self) -> thread::Result<()> {
-        debug!("Terminating workers");
+        debug!("[main] terminating workers");
 
         for sender in &self.command_senders {
             sender.send(WorkerCommand::Terminate).unwrap();
@@ -191,7 +191,7 @@ impl WorkerPool {
     }
 
     pub fn queue(&self, path: PathBuf) {
-        info!("Queued {}", path.display());
+        info!("[main] queued {}", path.display());
 
         let file = File::new(path, None);
         let is_dir = file.is_dir;
