@@ -1,0 +1,10 @@
+[package]
+name = "recrm-cli"
+version = "0.1.0"
+authors = ["Ciffelia <mc.prince.0203@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+recrm-core = { path = "../recrm-core" }
+log = "0.4.14"
+env_logger = "0.8.3"

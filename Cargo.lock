@@ -224,11 +224,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "recrm"
+name = "recrm-cli"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "log",
+ "recrm-core",
+]
+
+[[package]]
+name = "recrm-core"
 version = "0.1.0"
 dependencies = [
  "crossbeam",
- "env_logger",
  "log",
  "num_cpus",
  "parking_lot",
