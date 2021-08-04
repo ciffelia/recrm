@@ -71,8 +71,13 @@ mod tests {
     use std::time::Instant;
 
     #[test]
-    fn enumerate_children() -> io::Result<()> {
-        let root_dir = Arc::new(Mutex::new(File::new(PathBuf::from("."), None)));
+    fn enumerate_children() -> Result<()> {
+        let root_dir = File::new(NewFileOptions {
+            path: &".",
+            is_dir: true,
+            parent: None
+        });
+        let root_dir = Arc::new(Mutex::new(root_dir));
         println!("{:?}", root_dir.lock());
 
         for entry in File::scan_children(&root_dir)? {
@@ -86,7 +91,12 @@ mod tests {
     fn recursively_enumerate_children() {
         let start = Instant::now();
 
-        let root_dir = Arc::new(Mutex::new(File::new(PathBuf::from("."), None)));
+        let root_dir = File::new(NewFileOptions {
+            path: &".",
+            is_dir: true,
+            parent: None
+        });
+        let root_dir = Arc::new(Mutex::new(root_dir));
         println!("{:?}", root_dir.lock());
 
         let mut queue = VecDeque::new();
