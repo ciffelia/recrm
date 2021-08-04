@@ -1,31 +1,44 @@
+use anyhow::Result;
 use parking_lot::Mutex;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fs, io};
 
 #[derive(Debug)]
 pub struct File {
     pub path: PathBuf,
     pub is_dir: bool,
-    pub parent: Option<Arc<Mutex<Self>>>,
+    pub parent: Option<Arc<Mutex<File>>>,
     pub children_count: Option<usize>,
 }
 
+pub struct NewFileOptions<'a> {
+    pub path: &'a dyn AsRef<Path>,
+    pub is_dir: bool,
+    pub parent: Option<Arc<Mutex<File>>>,
+}
+
 impl File {
-    pub fn new(path: PathBuf, parent: Option<Arc<Mutex<File>>>) -> Self {
+    pub fn new(options: NewFileOptions) -> Self {
         File {
-            is_dir: path.is_dir(),
-            path,
-            parent,
+            path: options.path.as_ref().into(),
+            is_dir: options.is_dir,
+            parent: options.parent,
             children_count: None,
         }
     }
 
-    pub fn scan_children(dir: &Arc<Mutex<Self>>) -> io::Result<Vec<File>> {
+    pub fn scan_children(dir: &Arc<Mutex<Self>>) -> Result<Vec<File>> {
         let children = fs::read_dir(&dir.lock().path)?
-            .map(|res| res.map(|entry| entry.path()))
-            .map(|res| res.map(|path| File::new(path, Some(dir.clone()))))
-            .collect::<io::Result<Vec<File>>>();
+            .map(|entry| -> Result<File> {
+                let entry = entry?;
+                Ok(File::new(NewFileOptions {
+                    path: &entry.path(),
+                    is_dir: entry.file_type()?.is_dir(),
+                    parent: Some(dir.clone()),
+                }))
+            })
+            .collect::<Result<Vec<File>>>();
 
         if let Ok(children) = &children {
             let mut dir = dir.lock();
@@ -35,7 +48,7 @@ impl File {
         children
     }
 
-    pub fn delete(&self) -> io::Result<()> {
+    pub fn delete(&self) -> Result<()> {
         if self.is_dir {
             fs::remove_dir(&self.path)?;
         } else {

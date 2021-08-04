@@ -1,23 +1,26 @@
+use crate::event::Event;
 use crate::file::File;
-use crate::job::{JobPool, JobProgress, JobType};
-use crate::job::{JobProgressEvent, JobProgressStore};
+use crate::job::JobProgressStore;
+use crate::job::JobQueue;
+use anyhow::Result;
 use crossbeam::{channel, select};
-use log::{debug, info, trace};
+use log::{debug, trace};
 use parking_lot::Mutex;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::{io, thread};
+use std::thread;
+use std::time::Duration;
 
 pub struct Worker {
     id: usize,
-    preferred_job_type: JobType,
-    job_pool: JobPool,
+    allow_delete: bool,
+    job_queue: JobQueue,
     job_progress_store: JobProgressStore,
     command_receiver: channel::Receiver<WorkerCommand>,
+    event_sender: channel::Sender<Event>,
 }
 
 impl Worker {
-    pub fn work_loop(&self) -> io::Result<()> {
+    pub fn work_loop(&self) -> Result<()> {
         debug!("[{:02}] started", self.id);
 
         loop {
@@ -28,34 +31,34 @@ impl Worker {
                 _ => {}
             }
 
-            match self.preferred_job_type {
-                JobType::Scan => {
-                    if let Ok(file) = self.job_pool.scan_receiver.try_recv() {
-                        self.scan(file)?;
-                        continue;
-                    }
-                }
-                JobType::Delete => {
-                    if let Ok(file) = self.job_pool.delete_receiver.try_recv() {
-                        self.delete(file)?;
-                        continue;
-                    }
-                }
-            };
-
-            select! {
-                recv(self.command_receiver) -> command => {
-                    match command.unwrap() {
-                        WorkerCommand::Terminate => {
-                            break;
+            if self.allow_delete {
+                select! {
+                    recv(self.command_receiver) -> command => {
+                        match command? {
+                            WorkerCommand::Terminate => {
+                                break;
+                            }
                         }
                     }
+                    recv(self.job_queue.scan_receiver) -> file => {
+                        self.scan(file?)?;
+                    }
+                    recv(self.job_queue.delete_receiver) -> file => {
+                        self.delete(file?)?;
+                    }
                 }
-                recv(self.job_pool.scan_receiver) -> file => {
-                    self.scan(file.unwrap())?;
-                }
-                recv(self.job_pool.delete_receiver) -> file => {
-                    self.delete(file.unwrap())?;
+            } else {
+                select! {
+                    recv(self.command_receiver) -> command => {
+                        match command? {
+                            WorkerCommand::Terminate => {
+                                break;
+                            }
+                        }
+                    }
+                    recv(self.job_queue.scan_receiver) -> file => {
+                        self.scan(file?)?;
+                    }
                 }
             }
         }
@@ -65,7 +68,7 @@ impl Worker {
         Ok(())
     }
 
-    fn scan(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
+    fn scan(&self, file: Arc<Mutex<File>>) -> Result<()> {
         trace!(
             "[{:02}] receive_scan: {}",
             self.id,
@@ -79,10 +82,10 @@ impl Worker {
             for child in children {
                 if child.is_dir {
                     self.queue_scan(Arc::new(Mutex::new(child)));
-                    self.job_progress_store.report_dir_found();
+                    self.job_progress_store.add_dir_found();
                 } else {
                     self.queue_delete(Arc::new(Mutex::new(child)));
-                    self.job_progress_store.report_file_found();
+                    self.job_progress_store.add_file_found();
                 }
             }
         }
@@ -90,35 +93,30 @@ impl Worker {
         Ok(())
     }
 
-    fn delete(&self, file: Arc<Mutex<File>>) -> io::Result<()> {
+    fn delete(&self, file: Arc<Mutex<File>>) -> Result<()> {
         trace!(
             "[{:02}] receive_delete: {}",
             self.id,
             file.lock().path.display()
         );
 
-        {
-            let file = file.lock();
-            file.delete()?;
+        let file = file.lock();
+        file.delete()?;
 
-            if file.is_dir {
-                self.job_progress_store.report_dir_deleted();
-            } else {
-                self.job_progress_store.report_file_deleted();
+        if file.is_dir {
+            self.job_progress_store.add_dir_deleted();
+        } else {
+            self.job_progress_store.add_file_deleted();
+        }
+
+        match &file.parent {
+            Some(parent) => {
+                if parent.lock().children_count == Some(0) {
+                    self.queue_delete(parent.clone());
+                }
             }
-
-            match &file.parent {
-                Some(parent) => {
-                    if parent.lock().children_count == Some(0) {
-                        self.queue_delete(parent.clone());
-                    }
-                }
-                None => {
-                    self.job_progress_store
-                        .event_sender
-                        .send(JobProgressEvent::DeleteComplete)
-                        .unwrap();
-                }
+            None => {
+                self.event_sender.send(Event::DeleteComplete)?;
             }
         }
 
@@ -131,7 +129,7 @@ impl Worker {
             self.id,
             file.lock().path.display()
         );
-        self.job_pool.scan_sender.send(file).unwrap();
+        self.job_queue.scan_sender.send(file).unwrap();
     }
 
     fn queue_delete(&self, file: Arc<Mutex<File>>) {
@@ -140,8 +138,15 @@ impl Worker {
             self.id,
             file.lock().path.display()
         );
-        self.job_pool.delete_sender.send(file).unwrap();
+        self.job_queue.delete_sender.send(file).unwrap();
     }
+}
+
+#[derive(Debug)]
+pub struct StartWorkerOption {
+    pub allow_delete: bool,
+    pub job_queue: JobQueue,
+    pub job_progress_store: JobProgressStore,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -150,79 +155,67 @@ pub enum WorkerCommand {
 }
 
 pub struct WorkerPool {
-    job_pool: JobPool,
-    pub job_progress_store: JobProgressStore,
+    available_id: usize,
     command_senders: Vec<channel::Sender<WorkerCommand>>,
+    event_sender: channel::Sender<Event>,
+    event_receiver: channel::Receiver<Event>,
 }
 
 impl WorkerPool {
-    pub fn new(size: usize) -> WorkerPool {
-        let mut worker_pool = WorkerPool {
-            job_pool: JobPool::new(),
-            job_progress_store: JobProgressStore::new(),
+    pub fn new() -> WorkerPool {
+        let (event_sender, event_receiver) = channel::unbounded();
+
+        WorkerPool {
+            available_id: 0,
             command_senders: vec![],
-        };
-
-        for id in 0..size {
-            let preferred_job_type = if (id as f32) < (size as f32) / 2.0 {
-                JobType::Scan
-            } else {
-                JobType::Delete
-            };
-
-            worker_pool.start_worker(id, preferred_job_type);
+            event_sender,
+            event_receiver,
         }
-
-        worker_pool
     }
 
-    pub fn start_worker(&mut self, id: usize, preferred_job_type: JobType) {
-        let job_pool = self.job_pool.clone();
-        let job_progress_store = self.job_progress_store.clone();
-
+    pub fn start_worker(&mut self, option: StartWorkerOption) {
         let (command_sender, command_receiver) = channel::unbounded();
         self.command_senders.push(command_sender);
 
         let worker = Worker {
-            id,
-            preferred_job_type,
-            job_pool,
-            job_progress_store,
+            id: self.available_id,
+            allow_delete: option.allow_delete,
+            job_queue: option.job_queue,
+            job_progress_store: option.job_progress_store,
             command_receiver,
+            event_sender: self.event_sender.clone(),
         };
 
         thread::spawn(move || {
             worker.work_loop().unwrap();
         });
+
+        self.available_id += 1;
     }
 
-    pub fn terminate_workers(&self) -> thread::Result<()> {
+    pub fn terminate_workers(&self) -> Result<()> {
         debug!("[main] terminating workers");
 
-        for sender in &self.command_senders {
-            sender.send(WorkerCommand::Terminate).unwrap();
-        }
+        self.send_command(WorkerCommand::Terminate)?;
 
         Ok(())
     }
 
-    pub fn queue(&self, path: PathBuf) {
-        info!("[main] queued {}", path.display());
-
-        let file = File::new(path, None);
-        let is_dir = file.is_dir;
-        let msg = Arc::new(Mutex::new(file));
-
-        if is_dir {
-            self.job_pool.scan_sender.send(msg).unwrap();
-            self.job_progress_store.report_dir_found();
-        } else {
-            self.job_pool.delete_sender.send(msg).unwrap();
-            self.job_progress_store.report_file_found()
-        }
+    pub fn wait_for_event(&self, timeout: Duration) -> Option<Event> {
+        self.event_receiver.recv_timeout(timeout).ok()
     }
 
-    pub fn get_progress(&self) -> JobProgress {
-        self.job_progress_store.get_progress()
+    fn send_command(&self, command: WorkerCommand) -> Result<()> {
+        for sender in &self.command_senders {
+            sender.send(command)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Drop for WorkerPool {
+    fn drop(&mut self) {
+        self.terminate_workers().unwrap();
     }
 }
