@@ -75,7 +75,7 @@ mod tests {
         let root_dir = File::new(NewFileOptions {
             path: &".",
             is_dir: true,
-            parent: None
+            parent: None,
         });
         let root_dir = Arc::new(Mutex::new(root_dir));
         println!("{:?}", root_dir.lock());
@@ -94,7 +94,7 @@ mod tests {
         let root_dir = File::new(NewFileOptions {
             path: &".",
             is_dir: true,
-            parent: None
+            parent: None,
         });
         let root_dir = Arc::new(Mutex::new(root_dir));
         println!("{:?}", root_dir.lock());
