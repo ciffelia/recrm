@@ -54,7 +54,7 @@ impl Task {
             .scan_sender()
             .send(Arc::new(Mutex::new(file)))
             .unwrap();
-        task.job_progress_store.add_dir_found();
+        task.job_progress_store.increment_dir_found();
 
         Ok(task)
     }

@@ -86,10 +86,10 @@ impl Worker {
             for child in children {
                 if child.is_dir() {
                     self.queue_scan(Arc::new(Mutex::new(child)));
-                    self.job_progress_store.add_dir_found();
+                    self.job_progress_store.increment_dir_found();
                 } else {
                     self.queue_delete(Arc::new(Mutex::new(child)));
-                    self.job_progress_store.add_file_found();
+                    self.job_progress_store.increment_file_found();
                 }
             }
         }
@@ -108,9 +108,9 @@ impl Worker {
         file.delete()?;
 
         if file.is_dir() {
-            self.job_progress_store.add_dir_deleted();
+            self.job_progress_store.increment_dir_deleted();
         } else {
-            self.job_progress_store.add_file_deleted();
+            self.job_progress_store.increment_file_deleted();
         }
 
         match file.parent() {

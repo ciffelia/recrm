@@ -42,7 +42,7 @@ impl JobQueue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct JobProgress {
     pub found_dirs: usize,
     pub found_files: usize,
@@ -68,19 +68,19 @@ impl JobProgressStore {
         }
     }
 
-    pub fn add_dir_found(&self) {
+    pub fn increment_dir_found(&self) {
         self.found_dirs.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn add_file_found(&self) {
+    pub fn increment_file_found(&self) {
         self.found_files.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn add_dir_deleted(&self) {
+    pub fn increment_dir_deleted(&self) {
         self.deleted_dirs.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn add_file_deleted(&self) {
+    pub fn increment_file_deleted(&self) {
         self.deleted_files.fetch_add(1, Ordering::Relaxed);
     }
 
