@@ -51,7 +51,7 @@ impl Task {
         };
 
         task.job_queue
-            .scan_sender
+            .scan_sender()
             .send(Arc::new(Mutex::new(file)))
             .unwrap();
         task.job_progress_store.add_dir_found();
@@ -87,8 +87,8 @@ impl Task {
         self.worker_pool.wait_for_event(timeout)
     }
 
-    pub fn get_progress(&self) -> JobProgress {
-        self.job_progress_store.get_progress()
+    pub fn progress(&self) -> JobProgress {
+        self.job_progress_store.progress()
     }
 
     fn start_workers(&mut self, allow_delete: bool) {

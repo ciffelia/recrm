@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct JobQueue {
-    pub scan_sender: channel::Sender<Arc<Mutex<File>>>,
-    pub scan_receiver: channel::Receiver<Arc<Mutex<File>>>,
-    pub delete_sender: channel::Sender<Arc<Mutex<File>>>,
-    pub delete_receiver: channel::Receiver<Arc<Mutex<File>>>,
+    scan_sender: channel::Sender<Arc<Mutex<File>>>,
+    scan_receiver: channel::Receiver<Arc<Mutex<File>>>,
+    delete_sender: channel::Sender<Arc<Mutex<File>>>,
+    delete_receiver: channel::Receiver<Arc<Mutex<File>>>,
 }
 
 impl JobQueue {
@@ -24,14 +24,30 @@ impl JobQueue {
             delete_receiver,
         }
     }
+
+    pub fn scan_sender(&self) -> &channel::Sender<Arc<Mutex<File>>> {
+        &self.scan_sender
+    }
+
+    pub fn scan_receiver(&self) -> &channel::Receiver<Arc<Mutex<File>>> {
+        &self.scan_receiver
+    }
+
+    pub fn delete_sender(&self) -> &channel::Sender<Arc<Mutex<File>>> {
+        &self.delete_sender
+    }
+
+    pub fn delete_receiver(&self) -> &channel::Receiver<Arc<Mutex<File>>> {
+        &self.delete_receiver
+    }
 }
 
 #[derive(Debug)]
 pub struct JobProgress {
-    found_dirs: usize,
-    found_files: usize,
-    deleted_dirs: usize,
-    deleted_files: usize,
+    pub found_dirs: usize,
+    pub found_files: usize,
+    pub deleted_dirs: usize,
+    pub deleted_files: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +84,7 @@ impl JobProgressStore {
         self.deleted_files.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn get_progress(&self) -> JobProgress {
+    pub fn progress(&self) -> JobProgress {
         JobProgress {
             found_dirs: self.found_dirs.load(Ordering::Relaxed),
             found_files: self.found_files.load(Ordering::Relaxed),

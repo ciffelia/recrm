@@ -40,10 +40,10 @@ impl Worker {
                             }
                         }
                     }
-                    recv(self.job_queue.scan_receiver) -> file => {
+                    recv(self.job_queue.scan_receiver()) -> file => {
                         self.scan(file?)?;
                     }
-                    recv(self.job_queue.delete_receiver) -> file => {
+                    recv(self.job_queue.delete_receiver()) -> file => {
                         self.delete(file?)?;
                     }
                 }
@@ -56,7 +56,7 @@ impl Worker {
                             }
                         }
                     }
-                    recv(self.job_queue.scan_receiver) -> file => {
+                    recv(self.job_queue.scan_receiver()) -> file => {
                         self.scan(file?)?;
                     }
                 }
@@ -72,7 +72,7 @@ impl Worker {
         trace!(
             "[{:02}] receive_scan: {}",
             self.id,
-            file.lock().path.display()
+            file.lock().path().display()
         );
 
         let children = File::scan_children(&file)?;
@@ -80,7 +80,7 @@ impl Worker {
             self.queue_delete(file);
         } else {
             for child in children {
-                if child.is_dir {
+                if child.is_dir() {
                     self.queue_scan(Arc::new(Mutex::new(child)));
                     self.job_progress_store.add_dir_found();
                 } else {
@@ -97,21 +97,21 @@ impl Worker {
         trace!(
             "[{:02}] receive_delete: {}",
             self.id,
-            file.lock().path.display()
+            file.lock().path().display()
         );
 
         let file = file.lock();
         file.delete()?;
 
-        if file.is_dir {
+        if file.is_dir() {
             self.job_progress_store.add_dir_deleted();
         } else {
             self.job_progress_store.add_file_deleted();
         }
 
-        match &file.parent {
+        match file.parent() {
             Some(parent) => {
-                if parent.lock().children_count == Some(0) {
+                if parent.lock().children_count() == Some(0) {
                     self.queue_delete(parent.clone());
                 }
             }
@@ -127,18 +127,18 @@ impl Worker {
         trace!(
             "[{:02}] queue_scan: {}",
             self.id,
-            file.lock().path.display()
+            file.lock().path().display()
         );
-        self.job_queue.scan_sender.send(file).unwrap();
+        self.job_queue.scan_sender().send(file).unwrap();
     }
 
     fn queue_delete(&self, file: Arc<Mutex<File>>) {
         trace!(
             "[{:02}] queue_delete: {}",
             self.id,
-            file.lock().path.display()
+            file.lock().path().display()
         );
-        self.job_queue.delete_sender.send(file).unwrap();
+        self.job_queue.delete_sender().send(file).unwrap();
     }
 }
 

@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct File {
-    pub path: PathBuf,
-    pub is_dir: bool,
-    pub parent: Option<Arc<Mutex<File>>>,
-    pub children_count: Option<usize>,
+    path: PathBuf,
+    is_dir: bool,
+    parent: Option<Arc<Mutex<File>>>,
+    children_count: Option<usize>,
 }
 
 pub struct NewFileOptions<T: Into<PathBuf>> {
@@ -26,6 +26,22 @@ impl File {
             parent: options.parent,
             children_count: None,
         }
+    }
+
+    pub fn path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.is_dir
+    }
+
+    pub fn parent(&self) -> &Option<Arc<Mutex<File>>> {
+        &self.parent
+    }
+
+    pub fn children_count(&self) -> Option<usize> {
+        self.children_count
     }
 
     pub fn scan_children(dir: &Arc<Mutex<Self>>) -> Result<Vec<File>> {
@@ -107,7 +123,7 @@ mod tests {
 
             for child in File::scan_children(&file).unwrap() {
                 println!("found: {:?}", child);
-                if child.is_dir {
+                if child.is_dir() {
                     queue.push_back(Arc::new(Mutex::new(child)));
                 }
             }

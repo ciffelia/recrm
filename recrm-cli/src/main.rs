@@ -19,7 +19,7 @@ fn main() -> Result<()> {
         let timeout = Duration::from_millis(500);
         let res = task.wait_for_event(timeout);
 
-        let progress = task.get_progress();
+        let progress = task.progress();
         println!("{:?}", progress);
 
         match res {
