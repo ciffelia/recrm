@@ -30,14 +30,14 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new<T: AsRef<Path>>(file_path: &T) -> Result<Task> {
+    pub fn new<T: AsRef<Path>>(file_path: T) -> Result<Task> {
         let file_path = file_path.as_ref();
         if !file_path.is_dir() {
             bail!("{} is not directory.", file_path.display())
         }
 
         let file = File::new(NewFileOptions {
-            path: &file_path,
+            path: file_path,
             is_dir: true,
             parent: None,
         });

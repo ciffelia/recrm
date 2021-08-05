@@ -1,7 +1,7 @@
 use anyhow::Result;
 use parking_lot::Mutex;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Debug)]
@@ -12,16 +12,16 @@ pub struct File {
     pub children_count: Option<usize>,
 }
 
-pub struct NewFileOptions<'a> {
-    pub path: &'a dyn AsRef<Path>,
+pub struct NewFileOptions<T: Into<PathBuf>> {
+    pub path: T,
     pub is_dir: bool,
     pub parent: Option<Arc<Mutex<File>>>,
 }
 
 impl File {
-    pub fn new(options: NewFileOptions) -> Self {
+    pub fn new<T: Into<PathBuf>>(options: NewFileOptions<T>) -> Self {
         File {
-            path: options.path.as_ref().into(),
+            path: options.path.into(),
             is_dir: options.is_dir,
             parent: options.parent,
             children_count: None,
@@ -33,7 +33,7 @@ impl File {
             .map(|entry| -> Result<File> {
                 let entry = entry?;
                 Ok(File::new(NewFileOptions {
-                    path: &entry.path(),
+                    path: entry.path(),
                     is_dir: entry.file_type()?.is_dir(),
                     parent: Some(dir.clone()),
                 }))
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn enumerate_children() -> Result<()> {
         let root_dir = File::new(NewFileOptions {
-            path: &".",
+            path: ".",
             is_dir: true,
             parent: None,
         });
@@ -92,7 +92,7 @@ mod tests {
         let start = Instant::now();
 
         let root_dir = File::new(NewFileOptions {
-            path: &".",
+            path: ".",
             is_dir: true,
             parent: None,
         });
