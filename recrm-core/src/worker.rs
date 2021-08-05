@@ -31,6 +31,10 @@ impl Worker {
                 _ => {}
             }
 
+            if let Ok(file) = self.job_queue.scan_receiver().try_recv() {
+                self.scan(file)?;
+            }
+
             if self.allow_delete {
                 select! {
                     recv(self.command_receiver) -> command => {
