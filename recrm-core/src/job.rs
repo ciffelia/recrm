@@ -4,12 +4,40 @@ use parking_lot::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+pub struct ScanJob {
+    file: Arc<Mutex<File>>,
+}
+
+impl ScanJob {
+    pub fn new(file: Arc<Mutex<File>>) -> Self {
+        Self { file }
+    }
+
+    pub fn file(self) -> Arc<Mutex<File>> {
+        self.file
+    }
+}
+
+pub struct DeleteJob {
+    file: Arc<Mutex<File>>,
+}
+
+impl DeleteJob {
+    pub fn new(file: Arc<Mutex<File>>) -> Self {
+        Self { file }
+    }
+
+    pub fn file(self) -> Arc<Mutex<File>> {
+        self.file
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct JobQueue {
-    scan_sender: channel::Sender<Arc<Mutex<File>>>,
-    scan_receiver: channel::Receiver<Arc<Mutex<File>>>,
-    delete_sender: channel::Sender<Arc<Mutex<File>>>,
-    delete_receiver: channel::Receiver<Arc<Mutex<File>>>,
+    scan_sender: channel::Sender<ScanJob>,
+    scan_receiver: channel::Receiver<ScanJob>,
+    delete_sender: channel::Sender<DeleteJob>,
+    delete_receiver: channel::Receiver<DeleteJob>,
 }
 
 impl JobQueue {
@@ -25,19 +53,19 @@ impl JobQueue {
         }
     }
 
-    pub fn scan_sender(&self) -> &channel::Sender<Arc<Mutex<File>>> {
+    pub fn scan_sender(&self) -> &channel::Sender<ScanJob> {
         &self.scan_sender
     }
 
-    pub fn scan_receiver(&self) -> &channel::Receiver<Arc<Mutex<File>>> {
+    pub fn scan_receiver(&self) -> &channel::Receiver<ScanJob> {
         &self.scan_receiver
     }
 
-    pub fn delete_sender(&self) -> &channel::Sender<Arc<Mutex<File>>> {
+    pub fn delete_sender(&self) -> &channel::Sender<DeleteJob> {
         &self.delete_sender
     }
 
-    pub fn delete_receiver(&self) -> &channel::Receiver<Arc<Mutex<File>>> {
+    pub fn delete_receiver(&self) -> &channel::Receiver<DeleteJob> {
         &self.delete_receiver
     }
 }

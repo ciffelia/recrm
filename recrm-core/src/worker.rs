@@ -1,7 +1,6 @@
 use crate::event::Event;
 use crate::file::File;
-use crate::job::JobProgressStore;
-use crate::job::JobQueue;
+use crate::job::{DeleteJob, JobProgressStore, JobQueue, ScanJob};
 use anyhow::Result;
 use crossbeam::{channel, select};
 use log::{debug, trace};
@@ -23,6 +22,15 @@ impl Worker {
     pub fn work_loop(&self) -> Result<()> {
         debug!("[{:02}] started", self.id);
 
+        let never = channel::never();
+
+        let scan_receiver = self.job_queue.scan_receiver();
+        let delete_receiver = if self.allow_delete {
+            self.job_queue.delete_receiver()
+        } else {
+            &never
+        };
+
         loop {
             match self.command_receiver.try_recv() {
                 Ok(WorkerCommand::Terminate) => {
@@ -31,38 +39,24 @@ impl Worker {
                 _ => {}
             }
 
-            if let Ok(file) = self.job_queue.scan_receiver().try_recv() {
-                self.scan(file)?;
+            if let Ok(job) = scan_receiver.try_recv() {
+                self.process_scan_job(job)?;
+                continue;
             }
 
-            if self.allow_delete {
-                select! {
-                    recv(self.command_receiver) -> command => {
-                        match command? {
-                            WorkerCommand::Terminate => {
-                                break;
-                            }
+            select! {
+                recv(self.command_receiver) -> command => {
+                    match command? {
+                        WorkerCommand::Terminate => {
+                            break;
                         }
-                    }
-                    recv(self.job_queue.scan_receiver()) -> file => {
-                        self.scan(file?)?;
-                    }
-                    recv(self.job_queue.delete_receiver()) -> file => {
-                        self.delete(file?)?;
                     }
                 }
-            } else {
-                select! {
-                    recv(self.command_receiver) -> command => {
-                        match command? {
-                            WorkerCommand::Terminate => {
-                                break;
-                            }
-                        }
-                    }
-                    recv(self.job_queue.scan_receiver()) -> file => {
-                        self.scan(file?)?;
-                    }
+                recv(scan_receiver) -> job => {
+                    self.process_scan_job(job?)?;
+                }
+                recv(delete_receiver) -> job => {
+                    self.process_delete_job(job?)?;
                 }
             }
         }
@@ -72,7 +66,9 @@ impl Worker {
         Ok(())
     }
 
-    fn scan(&self, file: Arc<Mutex<File>>) -> Result<()> {
+    fn process_scan_job(&self, job: ScanJob) -> Result<()> {
+        let file = job.file();
+
         trace!(
             "[{:02}] receive_scan: {}",
             self.id,
@@ -81,14 +77,14 @@ impl Worker {
 
         let children = File::scan_children(&file)?;
         if children.len() == 0 {
-            self.queue_delete(file);
+            self.queue_delete_job(DeleteJob::new(file))?;
         } else {
             for child in children {
                 if child.is_dir() {
-                    self.queue_scan(Arc::new(Mutex::new(child)));
+                    self.queue_scan_job(ScanJob::new(Arc::new(Mutex::new(child))))?;
                     self.job_progress_store.increment_dir_found();
                 } else {
-                    self.queue_delete(Arc::new(Mutex::new(child)));
+                    self.queue_delete_job(DeleteJob::new(Arc::new(Mutex::new(child))))?;
                     self.job_progress_store.increment_file_found();
                 }
             }
@@ -97,7 +93,9 @@ impl Worker {
         Ok(())
     }
 
-    fn delete(&self, file: Arc<Mutex<File>>) -> Result<()> {
+    fn process_delete_job(&self, job: DeleteJob) -> Result<()> {
+        let file = job.file();
+
         trace!(
             "[{:02}] receive_delete: {}",
             self.id,
@@ -116,7 +114,7 @@ impl Worker {
         match file.parent() {
             Some(parent) => {
                 if parent.lock().children_count() == Some(0) {
-                    self.queue_delete(parent.clone());
+                    self.queue_delete_job(DeleteJob::new(parent.clone()))?;
                 }
             }
             None => {
@@ -127,22 +125,14 @@ impl Worker {
         Ok(())
     }
 
-    fn queue_scan(&self, file: Arc<Mutex<File>>) {
-        trace!(
-            "[{:02}] queue_scan: {}",
-            self.id,
-            file.lock().path().display()
-        );
-        self.job_queue.scan_sender().send(file).unwrap();
+    fn queue_scan_job(&self, job: ScanJob) -> Result<()> {
+        self.job_queue.scan_sender().send(job)?;
+        Ok(())
     }
 
-    fn queue_delete(&self, file: Arc<Mutex<File>>) {
-        trace!(
-            "[{:02}] queue_delete: {}",
-            self.id,
-            file.lock().path().display()
-        );
-        self.job_queue.delete_sender().send(file).unwrap();
+    fn queue_delete_job(&self, job: DeleteJob) -> Result<()> {
+        self.job_queue.delete_sender().send(job)?;
+        Ok(())
     }
 }
 

@@ -5,7 +5,7 @@ mod worker;
 
 pub use crate::event::Event;
 use crate::file::{File, NewFileOptions};
-use crate::job::{JobProgress, JobProgressStore, JobQueue};
+use crate::job::{JobProgress, JobProgressStore, JobQueue, ScanJob};
 use crate::worker::{StartWorkerOption, WorkerPool};
 use anyhow::{bail, Result};
 use log::info;
@@ -52,7 +52,7 @@ impl Task {
 
         task.job_queue
             .scan_sender()
-            .send(Arc::new(Mutex::new(file)))
+            .send(ScanJob::new(Arc::new(Mutex::new(file))))
             .unwrap();
         task.job_progress_store.increment_dir_found();
 
