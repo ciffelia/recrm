@@ -33,7 +33,7 @@ impl Task {
     pub fn new<T: AsRef<Path>>(file_path: T) -> Result<Task> {
         let file_path = file_path.as_ref();
         if !file_path.is_dir() {
-            bail!("{} is not directory.", file_path.display())
+            bail!("{} is not a directory.", file_path.display())
         }
 
         let file = File::new(NewFileOptions {
